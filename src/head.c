@@ -4,6 +4,10 @@
 #include <string.h>
 #include <stdlib.h>
 
+/*
+* this command print the first ten lines of the file, if no file given it will print user input.
+*/
+
 #define BUFFERSIZE 4096
 
 void with_file(int);
