@@ -5,6 +5,10 @@
 #include <unistd.h>
 #include <fcntl.h>
 
+/*
+* This command print the list of the logged in to the machine.
+*/
+
 #define UTSIZE (sizeof(struct utmp))
 #define NRECS 16
 
