@@ -5,6 +5,12 @@
 #include <stdlib.h>
 #include <errno.h>
 
+/*
+* This command print the last ten lines of the files, here I make that such as
+* the user can give more then one file. If no file is given, the user input will 
+* be printed.
+*/
+
 #define BUFFERSIZE 4096
 
 void with_file(int);
