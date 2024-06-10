@@ -3,6 +3,11 @@
 #include "lib.h"
 #include <unistd.h>
 #include <fcntl.h>
+    
+/*
+* this command print file to the standart input, here I create the program with library
+* to get more experience with that.
+*/
 
 int main (int argc, char* argv[]) {
     
