@@ -13,20 +13,30 @@
 #define STARTSIZEBUFFER 4096
 
 // to hold the stat inforamation with the name of the file.
-struct stat_with_name
-{
-    struct stat st;
-    char d_name[256];
+struct stat_with_name {
+    struct stat st;     // the metadata of the FD
+    char d_name[256];   // the name of the file
 };
 
+typedef struct flags {
+    int rev;                // for reverse option
+    int sort;               // to sort or not the output
+    int path;               // indicate if path given
+    int long_format;        // for -l option
+    int recur;              // for -R option
+    int inode_number;       // for inode number(-i option)
+    int access_time_sort;   // for sorting by access time
+    int access_time_details; // to show access time instead modification time
+} flags;
 
-void do_ls(char[],int ,int, int, int, int, int, int);
-void do_ls_l(char[],int, int, int, int, int, int, int,int);
+
+void do_ls(char[], flags*);
+void do_ls_l(char[], flags*);
 int compare_strings(const void*, const void*);
 int compare_times(const void*, const void*);
-struct stat_with_name** sortedStats(char[], int*, int, int, int);
-void show_file_info(char*, struct stat*, int, int);
-void do_stat(char*, int, int);
+struct stat_with_name** sortedStats(char[], int*, flags*);
+void show_file_info(char*, struct stat*, flags*);
+void do_stat(char*, flags*);
 void mode_to_letters(int, char[]);
 char* uid_to_name (uid_t);
 char* gid_to_name(gid_t);
@@ -44,42 +54,35 @@ int save_sub_dirs (char**, char*, char*, int);
 * their data.
 */
 int main(int argc, char* argv[]) {
-    int rev = 0;
-    int sort = 1;
-    int path = 0;
-    int long_format = 0;
-    int recur = 0;
-    int inode_number = 0;
-    int acces_time_sort = 0;
-    int acces_time_details = 0;
+    flags fl = {0, 1, 0, 0, 0, 0, 0, 0};
     int dir_count = 0;
     char* directories[argc - 1];
     
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-l") == 0) {
-            long_format = 1;
+            fl.long_format = 1;
         }
         else if (strcmp(argv[i], "-U") == 0) {
-            sort = 0;
+            fl.sort = 0;
         }
         else if (strcmp(argv[i], "-r") == 0) {
-            rev = 1;
+            fl.rev = 1;
         }
         else if (strcmp(argv[i], "-R") == 0) {
-            recur = 1;
+            fl.recur = 1;
         }
         else if (strcmp(argv[i], "-u") == 0) {
-            acces_time_sort = 1;
+            fl.access_time_sort = 1;
         }
         else if (strcmp(argv[i], "-lt") == 0) {
-            acces_time_details = 1;
+            fl.access_time_details = 1;
         }
         else if (strcmp(argv[i], "-i") == 0) {
-            inode_number = 1;
+            fl.inode_number = 1;
         }
         else {
             directories[dir_count++] = argv[i];
-            path = 1;
+            fl.path = 1;
         }
     }
 
@@ -93,10 +96,10 @@ int main(int argc, char* argv[]) {
             printf("%s:\n", directories[i]);
         }
         // acces_time_details is the -lt option.
-        if (long_format || acces_time_details) {
-            do_ls_l(directories[i], rev, sort, path, recur, acces_time_details, acces_time_sort, long_format, inode_number);
+        if (fl.long_format || fl.access_time_details) {
+            do_ls_l(directories[i], &fl);
         } else {
-            do_ls(directories[i], rev, sort, path, recur, acces_time_details, acces_time_sort, inode_number);
+            do_ls(directories[i], &fl);
         }
     }
     return 0;
@@ -105,26 +108,29 @@ int main(int argc, char* argv[]) {
 /* This function take care about -l option, meaning show extended data 
 * about the file
 */
-void do_ls_l(char dirname [],int reverse, int sort, int path, int recurs, int access_time_details, int acces_time_sort, int long_format, int inode_number) {
-    if (sort) {
+void do_ls_l(char dirname [], flags* fl) {
+    if (fl->sort) {
         int i = 0;
-        struct stat_with_name ** stats = sortedStats(dirname, &i, acces_time_sort, long_format, access_time_details);
+        struct stat_with_name ** stats = sortedStats(dirname, &i, fl);
         char ** subdirs = (char**)malloc(i * sizeof(char*));
         int count_subdirs = 0;
         char full_path[1024];
-        if (reverse) {
+        if (fl->rev) {
             // print the files in reverse order.
             for (int j = i - 1; j >= 0; j--) {   
-                if (access_time_details && acces_time_sort) {
-                    snprintf(full_path, sizeof(full_path), "%s/%s", dirname, stats[j]->d_name);
-                    show_file_info(stats[j]->d_name, &stats[j]->st, access_time_details, inode_number);
+                if (fl->access_time_details && fl->access_time_sort) {
+                    snprintf(full_path, sizeof(full_path), "%s/%s", \
+                            dirname, stats[j]->d_name);
+                    show_file_info(stats[j]->d_name, &stats[j]->st, fl);
                 } else {  
-                    snprintf(full_path, sizeof(full_path), "%s/%s", dirname, stats[j]->d_name);
-                    do_stat(full_path, access_time_details, inode_number);
+                    snprintf(full_path, sizeof(full_path), "%s/%s", \
+                            dirname, stats[j]->d_name);
+                    do_stat(full_path, fl);
                 }
 
-                if (recurs) {
-                    if (save_sub_dirs(subdirs, dirname, stats[j]->d_name, count_subdirs) != -1) {
+                if (fl->recur) {
+                    if (save_sub_dirs(subdirs, dirname, stats[j]->d_name, \
+                        count_subdirs) != -1) {
                         count_subdirs++;
                         // here I declare the size of subdirs to be like
                         // the size of the entrys, so its always have 
@@ -136,15 +142,18 @@ void do_ls_l(char dirname [],int reverse, int sort, int path, int recurs, int ac
         } else {
             // print in sorted order.
             for (int j = 0; j < i; j++) {
-                if (access_time_details && acces_time_sort) {
-                    snprintf(full_path, sizeof(full_path), "%s/%s", dirname, stats[j]->d_name);
-                    show_file_info(stats[j]->d_name, &stats[j]->st, access_time_details, inode_number);
+                if (fl->access_time_details && fl->access_time_sort) {
+                    snprintf(full_path, sizeof(full_path), "%s/%s", \
+                            dirname, stats[j]->d_name);
+                    show_file_info(stats[j]->d_name, &stats[j]->st, fl);
                 } else {  
-                    snprintf(full_path, sizeof(full_path), "%s/%s", dirname, stats[j]->d_name);
-                    do_stat(full_path, acces_time_sort, inode_number);
+                    snprintf(full_path, sizeof(full_path), "%s/%s", \
+                            dirname, stats[j]->d_name);
+                    do_stat(full_path, fl);
                 }
-                if (recurs) {
-                    if (save_sub_dirs(subdirs, dirname, stats[j]->d_name, count_subdirs) != -1) {
+                if (fl->recur) {
+                    if (save_sub_dirs(subdirs, dirname, stats[j]->d_name, \
+                        count_subdirs) != -1) {
                         count_subdirs++;
                     }
                 }
@@ -154,7 +163,7 @@ void do_ls_l(char dirname [],int reverse, int sort, int path, int recurs, int ac
         // call recursivaly for the sub directories.
         for (int i = 0; i < count_subdirs; i++) {
             printf("\n%s:\n", subdirs[i]);
-            do_ls_l(subdirs[i], reverse, sort, path, recurs, access_time_details, acces_time_sort, long_format, inode_number);
+            do_ls_l(subdirs[i], fl);
             free(subdirs[i]);      
         }
         printf("\n");
@@ -175,11 +184,13 @@ void do_ls_l(char dirname [],int reverse, int sort, int path, int recurs, int ac
         } else {
             subdirs = (char**)malloc(dirs_capacity * sizeof(char*));
             while ((dirnerpt = readdir(dirptr)) != NULL) {
-                snprintf(full_path, sizeof(full_path), "%s/%s", dirname, dirnerpt->d_name);
-                do_stat(full_path, access_time_details, inode_number);
+                snprintf(full_path, sizeof(full_path), "%s/%s", dirname, \
+                        dirnerpt->d_name);
+                do_stat(full_path, fl);
                 
-                if (recurs) {
-                    if (save_sub_dirs(subdirs, dirname, dirnerpt->d_name, count_subdirs) != -1) {
+                if (fl->recur) {
+                    if (save_sub_dirs(subdirs, dirname, dirnerpt->d_name, \
+                        count_subdirs) != -1) {
                         count_subdirs++;
                         // if memory in subdirs is over - reallocate.
                         if (count_subdirs == dirs_capacity) {
@@ -198,7 +209,7 @@ void do_ls_l(char dirname [],int reverse, int sort, int path, int recurs, int ac
         // call recursivaly for the sub directories.
         for (int i = 0; i < count_subdirs; i++) {
             printf("\n%s:\n", subdirs[i]);
-            do_ls_l(subdirs[i], reverse, sort, path, recurs, access_time_details, acces_time_sort, long_format, inode_number);
+            do_ls_l(subdirs[i], fl);
             free(subdirs[i]);      
         }
         printf("\n");
@@ -207,17 +218,17 @@ void do_ls_l(char dirname [],int reverse, int sort, int path, int recurs, int ac
 }
 
 /* This function take care about the regular command*/
-void do_ls(char dirname [], int reverse, int sort, int path, int recurs, int access_time_details, int access_time_sort, int inode_number) {
-    if (sort) {
+void do_ls(char dirname [], flags* fl) {
+    if (fl->sort) {
         int i = 0;
-        struct stat_with_name ** stats = sortedStats(dirname, &i, access_time_sort, 0, access_time_details);
+        struct stat_with_name ** stats = sortedStats(dirname, &i, fl);
         char ** subdirs = (char**)malloc(i * sizeof(char*));
         int count_subdirs = 0;
         int col = 0;
-        if (reverse) {
+        if (fl->rev) {
             // print the names in reverse order.
             for (int j = i - 1; j >= 0; j--) {
-                if (inode_number) {
+                if (fl->inode_number) {
                     printf("%-10ld", stats[j]->st.st_ino);
                 }
                 printf("%-20s", stats[j]->d_name);
@@ -226,8 +237,9 @@ void do_ls(char dirname [], int reverse, int sort, int path, int recurs, int acc
                     printf("\n");
                     col = 0;
                 }
-                if (recurs) {
-                    if (save_sub_dirs(subdirs, dirname, stats[j]->d_name, count_subdirs) != -1) {
+                if (fl->recur) {
+                    if (save_sub_dirs(subdirs, dirname, stats[j]->d_name, \
+                                    count_subdirs) != -1) {
                         count_subdirs++;
                         // here I declare the size of subdirs to be like
                         // the size of the entrys, so its always have 
@@ -239,7 +251,7 @@ void do_ls(char dirname [], int reverse, int sort, int path, int recurs, int acc
         } else {
             // print in sorted order
             for (int j = 0; j < i; j++) {
-                if (inode_number) {
+                if (fl->inode_number) {
                     printf("%-10ld", stats[j]->st.st_ino);
                 }
                 printf("%-20s", stats[j]->d_name);
@@ -248,8 +260,9 @@ void do_ls(char dirname [], int reverse, int sort, int path, int recurs, int acc
                     printf("\n");
                     col = 0;
                 }
-                if (recurs) {
-                    if (save_sub_dirs(subdirs, dirname, stats[j]->d_name, count_subdirs) != -1) {
+                if (fl->recur) {
+                    if (save_sub_dirs(subdirs, dirname, stats[j]->d_name, \
+                        count_subdirs) != -1) {
                         count_subdirs++;
                     }
                 }
@@ -259,7 +272,7 @@ void do_ls(char dirname [], int reverse, int sort, int path, int recurs, int acc
         // call recursivaly for the sub directories.    
         for (int i = 0; i < count_subdirs; i++) {
             printf("\n%s:\n", subdirs[i]);
-            do_ls(subdirs[i], reverse, sort, path, recurs, access_time_details, access_time_sort, inode_number);
+            do_ls(subdirs[i], fl);
             free(subdirs[i]);      
         }
         printf("\n");
@@ -281,7 +294,7 @@ void do_ls(char dirname [], int reverse, int sort, int path, int recurs, int acc
             subdirs = (char**)malloc(dirs_capacity * sizeof(char*));
 
             while ((dirnerpt = readdir(dirptr)) != NULL) {
-                if (inode_number) {
+                if (fl->inode_number) {
                     struct stat st;
                     if (stat(dirnerpt->d_name, &st) == -1) {
                         perror("error in stat function");
@@ -297,8 +310,9 @@ void do_ls(char dirname [], int reverse, int sort, int path, int recurs, int acc
                     printf("\n");
                 }
 
-                if (recurs) {
-                    if (save_sub_dirs(subdirs, dirname, dirnerpt->d_name, count_subdirs) != -1) {
+                if (fl->recur) {
+                    if (save_sub_dirs(subdirs, dirname, dirnerpt->d_name, \
+                                    count_subdirs) != -1) {
                         count_subdirs++;
                         if (count_subdirs == dirs_capacity) {
                             dirs_capacity += 10;
@@ -315,7 +329,7 @@ void do_ls(char dirname [], int reverse, int sort, int path, int recurs, int acc
             // call recursivaly for the sub directories.
             for (int i = 0; i < count_subdirs; i++) {
                 printf("\n%s:\n", subdirs[i]);
-                do_ls(subdirs[i], reverse, sort, path, recurs, access_time_details, access_time_sort, inode_number);
+                do_ls(subdirs[i], fl);
                 free(subdirs[i]);      
             }
             free(subdirs);
@@ -360,13 +374,14 @@ int compare_strings(const void* t1, const void* t2) {
 /* This function take care about sorted the information we get
 * by the option that we pass to it.
 */
-struct stat_with_name ** sortedStats (char dirname [], int* ptr, int access_time_sort, int long_format, int access_time_details) {
+struct stat_with_name ** sortedStats (char dirname [], int* ptr, flags* fl) {
     DIR *dirptr;
     struct dirent *dirnerpt;
     struct stat_with_name ** stats;
     size_t much_double_alloc = 1;
 
-    stats = (struct stat_with_name**)calloc(much_double_alloc * STARTSIZEBUFFER, sizeof(struct stat_with_name*));
+    stats = (struct stat_with_name**)calloc(much_double_alloc * STARTSIZEBUFFER, \
+                                            sizeof(struct stat_with_name*));
     if (stats == NULL) {
         printf("error in allocate memory");
         exit(1);
@@ -391,7 +406,8 @@ struct stat_with_name ** sortedStats (char dirname [], int* ptr, int access_time
         }
 
         char fullpath[1024];
-        snprintf(fullpath, sizeof(fullpath), "%s/%s", dirname, dirnerpt->d_name);
+        snprintf(fullpath, sizeof(fullpath), "%s/%s", dirname, \
+                dirnerpt->d_name);
 
         if (stat(fullpath, &stats[i]->st) == -1) {
             perror("stat");
@@ -407,7 +423,8 @@ struct stat_with_name ** sortedStats (char dirname [], int* ptr, int access_time
             // if we have more subdirs from the memory that we allocate 
             // first, then reallocate.
             much_double_alloc++;
-            stats = (struct stat_with_name**)realloc(stats, much_double_alloc * STARTSIZEBUFFER);
+            stats = (struct stat_with_name**)realloc(stats, \
+                                    much_double_alloc * STARTSIZEBUFFER);
             if (stats == NULL) {
                 printf("error in realloc memory");
                 exit(1);
@@ -415,9 +432,9 @@ struct stat_with_name ** sortedStats (char dirname [], int* ptr, int access_time
         }
     }
 
-    if (access_time_sort && long_format) {
+    if (fl->access_time_sort && fl->long_format) {
         qsort(stats, i, sizeof(struct stat_with_name*), compare_strings);
-    } else if (access_time_sort || access_time_details) {
+    } else if (fl->access_time_sort || fl->access_time_details) {
         qsort(stats, i, sizeof(struct stat_with_name*), compare_times);
     } else {
         qsort(stats, i, sizeof(struct stat_with_name*), compare_strings);
@@ -442,16 +459,16 @@ int compare_times (const void* t1, const void* t2) {
 }
 
 /* This function do the job for regular -l option*/
-void do_stat (char* name, int access_time_details, int inode_number) {
+void do_stat (char* name, flags* fl) {
     struct stat info;
     if (stat(name, &info) == -1) {
         perror(name);
         exit(1);
     }
-    show_file_info(name, &info, access_time_details, inode_number);
+    show_file_info(name, &info, fl);
 }
 
-void show_file_info (char* filename, struct stat* info_p, int access_time_details, int inode_number) {
+void show_file_info (char* filename, struct stat* info_p, flags* fl) {
     char *uid_to_name(), *gid_to_name(), *ctime();
     void mode_to_letters();
     char modest[11];
@@ -460,13 +477,13 @@ void show_file_info (char* filename, struct stat* info_p, int access_time_detail
 
     printf("%s ", modest);
     printf("%4d ", (int) info_p->st_nlink);
-    if (inode_number) {
+    if (fl->inode_number) {
         printf("%4d ", (int) info_p->st_ino);
     }
     printf("%-8s ", uid_to_name(info_p->st_uid));
     printf("%-8s ", gid_to_name(info_p->st_gid));
     printf("%8ld ", (long)info_p->st_size);
-    if (access_time_details) {
+    if (fl->access_time_details) {
         printf("%.12s ", 4+ctime(&info_p->st_atime));    
     }
     else {
