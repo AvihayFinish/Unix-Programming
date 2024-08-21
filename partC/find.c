@@ -18,8 +18,15 @@ typedef struct comparison_result {
     long value;
 } cmp;
 
+typedef struct flags {
+    int empty;      // for empty test
+    int inum;       // for inode number test
+    int links;      // for links test
+    char* type;     // for type test
+} flags;
+
 cmp* the_number(const char*);
-void pass_over_files(const char*, int, int, int, cmp*, char*);
+void pass_over_files(const char*, cmp*, flags*);
 int save_sub_dirs (char**, const char*, const char*, int);
 void f_empty(struct stat*, const char*);
 void f_inum(struct stat*, cmp*, const char*);
@@ -32,34 +39,43 @@ void f_type(mode_t md, char*, const char*);
 */
 int main (int argc, char * argv[]) {
     char* start_point = ".";
-    int empty = 0;
-    int inum = 0;
-    int links = 0;
+    flags fl = {0, 0, 0, NULL};
     int n = -1;
-    char * type = NULL;
     cmp* rs = NULL;
+    int check_options = 0;
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-empty") == 0) {
-            empty = 1;
+            fl.empty = 1;
+            check_options = 1;
             break;
         }
         else if (strcmp(argv[i], "-inum") == 0) {
-            inum = 1;
+            fl.inum = 1;
+            check_options = 1;
             rs = the_number(argv[++i]);
         }
         else if (strcmp(argv[i], "-links") == 0) {
-            links = 1;
+            fl.links = 1;
+            check_options = 1;
             rs = the_number(argv[++i]);
         }
         else if (strcmp(argv[i], "-type") == 0) {
-            type = argv[++i];
+            fl.type = argv[++i];
+            check_options = 1;
         }
         else {
             start_point = argv[i];
         }
     }
 
-    pass_over_files(start_point, empty, inum, links, rs, type);
+    if (!check_options) {
+        printf("the format is %s <-empty/-inum/-links/-type> for -inum "
+       "and -links enter +-n, and for -type enter f/d/c/s/p/b/l\n", 
+       argv[0]);
+       exit(1);
+    }
+
+    pass_over_files(start_point, rs, &fl);
 
     return 0;
 }
@@ -89,7 +105,7 @@ cmp* the_number(const char* str) {
 /* This function pass over the enrtys of the given directory and call the
 *  test for the files by the ints that the function get.
 */
-void pass_over_files(const char* dirname, int empty, int inum, int links, cmp* rs, char* type) {
+void pass_over_files(const char* dirname, cmp* rs, flags* fl) {
     DIR *dirptr;
     struct dirent *dirnerpt;
     int count_subdirs = 0;
@@ -107,7 +123,8 @@ void pass_over_files(const char* dirname, int empty, int inum, int links, cmp* r
         // that is not the directory work of the process and for the
         // recursively calls.
         char full_path[1024];
-        snprintf(full_path, sizeof(full_path), "%s/%s", dirname, dirnerpt->d_name);
+        snprintf(full_path, sizeof(full_path), "%s/%s", dirname, \
+                dirnerpt->d_name);
 
         struct stat st;
         if (stat(full_path, &st) == -1) {
@@ -115,7 +132,8 @@ void pass_over_files(const char* dirname, int empty, int inum, int links, cmp* r
             exit(EXIT_FAILURE);
         }
         if (S_ISDIR(st.st_mode)) {
-            if (save_sub_dirs(subdirs, dirname, dirnerpt->d_name, count_subdirs) != -1) {
+            if (save_sub_dirs(subdirs, dirname, dirnerpt->d_name, \
+                count_subdirs) != -1) {
                 count_subdirs++;
                 if (count_subdirs == dirs_capacity) {
                     dirs_capacity += 10;
@@ -128,17 +146,17 @@ void pass_over_files(const char* dirname, int empty, int inum, int links, cmp* r
             }
         }
 
-        if (empty) {
+        if (fl->empty) {
             f_empty(&st, dirnerpt->d_name);
         }
-        else if (inum){
+        else if (fl->inum){
             f_inum(&st, rs, dirnerpt->d_name);
         }
-        else if (links) {
+        else if (fl->links) {
             f_links(&st, rs, dirnerpt->d_name);
         } 
-        else if (type != NULL) {
-            f_type(st.st_mode, type, dirnerpt->d_name);
+        else if (fl->type != NULL) {
+            f_type(st.st_mode, fl->type, dirnerpt->d_name);
         }      
     }
 
@@ -147,7 +165,7 @@ void pass_over_files(const char* dirname, int empty, int inum, int links, cmp* r
     if (count_subdirs > 0) {
         for (int i = 0; i < count_subdirs; i++) {
             printf("\n*** %s ***\n", subdirs[i]);
-            pass_over_files(subdirs[i], empty, inum, links, rs, type);
+            pass_over_files(subdirs[i], rs, fl);
             free(subdirs[i]);
         }
     }
